@@ -6,6 +6,7 @@ export default function TabsLayout() {
   return (
     <Tabs>
       <Tabs.Screen name="index" options={{ title: t('tabs.matches') }} />
+      <Tabs.Screen name="history" options={{ title: t('tabs.history') }} />
       <Tabs.Screen name="settings" options={{ title: t('tabs.settings') }} />
     </Tabs>
   );

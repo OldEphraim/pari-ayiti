@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { Alert, ScrollView, View } from 'react-native';
+import { Alert, ScrollView, Switch, View } from 'react-native';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../src/ui/components/Button';
@@ -24,12 +24,15 @@ import {
   getMatchesSnapshot,
   refreshMatches,
 } from '../../src/services/matchFetcher';
+import { useAppStore } from '../../src/state/useAppStore';
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const [runningSmoke, setRunningSmoke] = useState(false);
   const [runningRefresh, setRunningRefresh] = useState(false);
   const active = (i18n.language as Language) ?? currentLanguage();
+  const mockFailuresEnabled = useAppStore((s) => s.mockFailuresEnabled);
+  const setMockFailuresEnabled = useAppStore((s) => s.setMockFailuresEnabled);
 
   const pickLanguage = async (lang: Language): Promise<void> => {
     if (lang === active) return;
@@ -226,6 +229,33 @@ export default function SettingsScreen() {
                   loading={runningRefresh}
                   onPress={runForceRefresh}
                 />
+              </View>
+            </Card>
+
+            <Card>
+              <View style={{ gap: spacing.sm }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: spacing.md,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text variant="body">DEV: Simulate flaky network</Text>
+                    <Text variant="small" muted>
+                      DEV: when on, the mock backend fails 80% of sync
+                      calls so PENDING_SYNC bets can be visibly drained
+                      after toggle-off.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={mockFailuresEnabled}
+                    onValueChange={(v) => void setMockFailuresEnabled(v)}
+                    accessibilityLabel="DEV: Simulate flaky network"
+                  />
+                </View>
               </View>
             </Card>
           </View>

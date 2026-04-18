@@ -64,6 +64,10 @@ export async function listUpcoming(db: DB): Promise<Match[]> {
   );
 }
 
+export async function listAllMatches(db: DB): Promise<Match[]> {
+  return db.query<Match>(`SELECT * FROM matches ORDER BY commence_time ASC`);
+}
+
 export async function getMatch(db: DB, id: string): Promise<Match | null> {
   const rows = await db.query<Match>(`SELECT * FROM matches WHERE id = ?`, [id]);
   return rows[0] ?? null;

@@ -1,12 +1,19 @@
 import 'react-native-get-random-values';
 import { useEffect, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { Stack } from 'expo-router';
 import { getDb } from '../src/db/client';
 import { reconcileBalance } from '../src/db/balance';
 import { initI18n } from '../src/i18n';
 import { loadInitialMatches, refreshMatches } from '../src/services/matchFetcher';
-import { subscribe } from '../src/services/connectivity';
-import { useAppStore } from '../src/state/useAppStore';
+import {
+  currentlyOnline,
+  subscribe as subscribeConnectivity,
+} from '../src/services/connectivity';
+import {
+  runWorkersAndHydrate,
+  useAppStore,
+} from '../src/state/useAppStore';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -28,13 +35,16 @@ export default function RootLayout() {
       ]);
       await useAppStore.getState().hydrate();
       setReady(true);
-      // Fire-and-forget live refresh after first paint. If offline, no key,
-      // or cache still fresh, this is a no-op.
+      // Drain anything pending from a previous session; safe no-op if nothing
+      // queued.
+      runWorkersAndHydrate().catch((err: unknown) => {
+        console.warn('[boot] runWorkersAndHydrate failed:', err);
+      });
+      // Fire-and-forget live refresh; hydrates the store after the fetch.
       refreshMatches(db)
         .then((summary) => {
           if (summary.attempted) {
             console.log('[matches] refresh:', summary);
-            // Pull the refreshed rows into the store.
             return useAppStore.getState().refreshAll();
           }
           return undefined;
@@ -47,10 +57,32 @@ export default function RootLayout() {
       setReady(true);
     });
 
-    const unsubscribe = subscribe((online) => {
+    // Workers fire on offline→online transitions and on every time the app
+    // comes to the foreground.
+    let wasOnline = currentlyOnline();
+    const unsubscribeConn = subscribeConnectivity((online) => {
       console.log('[connectivity]', online ? 'online' : 'offline');
+      if (!wasOnline && online) {
+        runWorkersAndHydrate().catch((err: unknown) => {
+          console.warn('[reconnect] runWorkersAndHydrate failed:', err);
+        });
+      }
+      wasOnline = online;
     });
-    return unsubscribe;
+
+    const onAppStateChange = (state: AppStateStatus): void => {
+      if (state === 'active') {
+        runWorkersAndHydrate().catch((err: unknown) => {
+          console.warn('[foreground] runWorkersAndHydrate failed:', err);
+        });
+      }
+    };
+    const appStateSub = AppState.addEventListener('change', onAppStateChange);
+
+    return () => {
+      unsubscribeConn();
+      appStateSub.remove();
+    };
   }, []);
 
   if (!ready) return null;
