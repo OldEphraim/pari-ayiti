@@ -6,6 +6,7 @@ import { reconcileBalance } from '../src/db/balance';
 import { initI18n } from '../src/i18n';
 import { loadInitialMatches, refreshMatches } from '../src/services/matchFetcher';
 import { subscribe } from '../src/services/connectivity';
+import { useAppStore } from '../src/state/useAppStore';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -25,6 +26,7 @@ export default function RootLayout() {
           await loadInitialMatches(db);
         })(),
       ]);
+      await useAppStore.getState().hydrate();
       setReady(true);
       // Fire-and-forget live refresh after first paint. If offline, no key,
       // or cache still fresh, this is a no-op.
@@ -32,7 +34,10 @@ export default function RootLayout() {
         .then((summary) => {
           if (summary.attempted) {
             console.log('[matches] refresh:', summary);
+            // Pull the refreshed rows into the store.
+            return useAppStore.getState().refreshAll();
           }
+          return undefined;
         })
         .catch((err: unknown) => {
           console.warn('[matches] refresh threw:', err);

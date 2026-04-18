@@ -26,5 +26,8 @@
   "settings.dailyLimit": "Limit chak jou",
   "settings.responsibleNote": "Pari se pou plezi. Si sa sispann fè w plezi, pran yon poz.",
   "history.empty": "Ou poko mete okenn pari",
-  "offline.banner": "San entènèt — {{count}} pari k ap tann"
+  "offline.banner": "San entènèt — {{count}} pari k ap tann",
+  "bet.genericError": "Gen yon pwoblèm. Eseye ankò.",
+  "common.yes": "Wi",
+  "common.no": "Non"
 }
