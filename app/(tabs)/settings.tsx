@@ -1,6 +1,7 @@
 import { Link } from 'expo-router';
 import { Alert, ScrollView, View } from 'react-native';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../src/ui/components/Button';
 import { Card } from '../../src/ui/components/Card';
 import { Screen } from '../../src/ui/components/Screen';
@@ -18,9 +19,17 @@ import { formatHTGN } from '../../src/utils/money';
 import { calculatePayout } from '../../src/utils/odds';
 import { uuid } from '../../src/utils/uuid';
 import { formatDate, now as nowSeconds } from '../../src/utils/time';
+import { currentLanguage, Language, setLanguage } from '../../src/i18n';
 
 export default function SettingsScreen() {
+  const { t, i18n } = useTranslation();
   const [runningSmoke, setRunningSmoke] = useState(false);
+  const active = (i18n.language as Language) ?? currentLanguage();
+
+  const pickLanguage = async (lang: Language): Promise<void> => {
+    if (lang === active) return;
+    await setLanguage(lang);
+  };
 
   const runSmokeTest = async (): Promise<void> => {
     setRunningSmoke(true);
@@ -85,13 +94,10 @@ export default function SettingsScreen() {
   const runUtilsCheck = (): void => {
     try {
       const sampleMinor = 125050;
-      const moneyLine = `formatHTGN(${sampleMinor}) → ${formatHTGN(sampleMinor, 'ht')}`;
+      const moneyLine = `formatHTGN(${sampleMinor}) → ${formatHTGN(sampleMinor, active)}`;
 
-      // Haiti vs. Brazil, plausible Group C kickoff: 2026-06-13 20:00 UTC.
-      const kickoffTs = Math.floor(
-        Date.UTC(2026, 5, 13, 20, 0, 0) / 1000,
-      );
-      const dateLine = `formatDate(${kickoffTs}) → ${formatDate(kickoffTs, 'ht')}`;
+      const kickoffTs = Math.floor(Date.UTC(2026, 5, 13, 20, 0, 0) / 1000);
+      const dateLine = `formatDate(${kickoffTs}) → ${formatDate(kickoffTs, active)}`;
 
       const uuidLine = `uuid() → ${uuid()}`;
 
@@ -112,11 +118,29 @@ export default function SettingsScreen() {
 
   return (
     <Screen padded={false}>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
-        <Text variant="h1">Paramèt</Text>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+        <Text variant="h1">{t('tabs.settings')}</Text>
+
+        <Card>
+          <View style={{ gap: spacing.sm }}>
+            <Text variant="h2">{t('settings.language')}</Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <Button
+                label="Kreyòl"
+                variant={active === 'ht' ? 'primary' : 'ghost'}
+                onPress={() => pickLanguage('ht')}
+              />
+              <Button
+                label="Français"
+                variant={active === 'fr' ? 'primary' : 'ghost'}
+                onPress={() => pickLanguage('fr')}
+              />
+            </View>
+          </View>
+        </Card>
 
         {__DEV__ && (
-          <View style={{ marginTop: spacing.xl, gap: spacing.md }}>
+          <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
             <Card>
               <Link href="/dev/gallery" accessibilityRole="link">
                 <Text variant="body">DEV: Component gallery</Text>
@@ -127,9 +151,9 @@ export default function SettingsScreen() {
               <View style={{ gap: spacing.sm }}>
                 <Text variant="body">DEV: DB smoke test</Text>
                 <Text variant="small" muted>
-                  Inserts a match, places a bet (tx + debit), concludes it,
-                  credits winnings, reconciles. Balance grows by one payout
-                  each run.
+                  DEV: inserts a match, places a bet (tx + debit), concludes
+                  it, credits winnings, reconciles. Balance grows by one
+                  payout each run.
                 </Text>
                 <Button
                   label={runningSmoke ? 'DEV: running…' : 'DEV: Run DB smoke test'}
@@ -144,8 +168,8 @@ export default function SettingsScreen() {
               <View style={{ gap: spacing.sm }}>
                 <Text variant="body">DEV: Utils check</Text>
                 <Text variant="small" muted>
-                  Exercises money / odds / uuid / time helpers and shows the
-                  output in an alert for visual verification.
+                  DEV: exercises money / odds / uuid / time helpers and
+                  shows the output in an alert for visual verification.
                 </Text>
                 <Button
                   label="DEV: Run utils check"
