@@ -1,0 +1,39 @@
+{
+  "name": "pari-ayiti",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@react-native-community/netinfo": "11.4.1",
+    "date-fns": "^4.1.0",
+    "expo": "~54.0.33",
+    "expo-constants": "~18.0.13",
+    "expo-router": "~6.0.23",
+    "expo-sqlite": "~16.0.10",
+    "expo-status-bar": "~3.0.9",
+    "i18next": "^26.0.6",
+    "react": "19.1.0",
+    "react-i18next": "^17.0.4",
+    "react-native": "0.81.5",
+    "react-native-get-random-values": "~1.11.0",
+    "uuid": "^13.0.0",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@testing-library/react-native": "^13.3.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "~19.1.0",
+    "@types/uuid": "^10.0.0",
+    "better-sqlite3": "^12.9.0",
+    "jest": "^30.3.0",
+    "jest-expo": "^55.0.16",
+    "ts-jest": "^29.4.9",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
