@@ -20,10 +20,15 @@ import { calculatePayout } from '../../src/utils/odds';
 import { uuid } from '../../src/utils/uuid';
 import { formatDate, now as nowSeconds } from '../../src/utils/time';
 import { currentLanguage, Language, setLanguage } from '../../src/i18n';
+import {
+  getMatchesSnapshot,
+  refreshMatches,
+} from '../../src/services/matchFetcher';
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const [runningSmoke, setRunningSmoke] = useState(false);
+  const [runningRefresh, setRunningRefresh] = useState(false);
   const active = (i18n.language as Language) ?? currentLanguage();
 
   const pickLanguage = async (lang: Language): Promise<void> => {
@@ -88,6 +93,30 @@ export default function SettingsScreen() {
       Alert.alert('DEV: smoke test FAILED', message);
     } finally {
       setRunningSmoke(false);
+    }
+  };
+
+  const runForceRefresh = async (): Promise<void> => {
+    setRunningRefresh(true);
+    try {
+      const db = await getDb();
+      const before = await getMatchesSnapshot(db);
+      const summary = await refreshMatches(db, { force: true });
+      const after = await getMatchesSnapshot(db);
+      const lines = [
+        `attempted=${summary.attempted}`,
+        summary.reason ? `reason=${summary.reason}` : null,
+        summary.updatedCount !== undefined
+          ? `updatedCount=${summary.updatedCount}`
+          : null,
+        `matches: ${before.count} → ${after.count}`,
+      ].filter(Boolean);
+      Alert.alert('DEV: force refresh', lines.join('\n'));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert('DEV: force refresh FAILED', message);
+    } finally {
+      setRunningRefresh(false);
     }
   };
 
@@ -175,6 +204,27 @@ export default function SettingsScreen() {
                   label="DEV: Run utils check"
                   variant="secondary"
                   onPress={runUtilsCheck}
+                />
+              </View>
+            </Card>
+
+            <Card>
+              <View style={{ gap: spacing.sm }}>
+                <Text variant="body">DEV: Force refresh from API</Text>
+                <Text variant="small" muted>
+                  DEV: bypasses the 30-minute cache gate and hits the Odds
+                  API directly. Silently no-ops when ODDS_API_KEY is unset
+                  or device is offline.
+                </Text>
+                <Button
+                  label={
+                    runningRefresh
+                      ? 'DEV: refreshing…'
+                      : 'DEV: Force refresh from API'
+                  }
+                  variant="secondary"
+                  loading={runningRefresh}
+                  onPress={runForceRefresh}
                 />
               </View>
             </Card>
