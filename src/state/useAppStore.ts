@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getDb } from '../db/client';
+import { startOfDay } from 'date-fns';
+import { DB, getDb } from '../db/client';
 import { applyLedgerEntry, getBalance } from '../db/balance';
 import { Bet, createBet, listBets } from '../db/bets';
 import { listAllMatches, Match } from '../db/matches';
@@ -19,10 +20,17 @@ import i18n, {
 } from '../i18n';
 
 const MOCK_FAILURES_STORAGE_KEY = 'pari-ayiti.mock-failures';
+const DAILY_LIMIT_STORAGE_KEY = 'pari-ayiti.daily-limit-htgn';
+const DEFAULT_DAILY_LIMIT_HTGN = 1000;
+
+export type BetErrorCode =
+  | 'insufficient_balance'
+  | 'invalid_stake'
+  | 'daily_limit_exceeded';
 
 export class BetError extends Error {
   constructor(
-    public readonly code: 'insufficient_balance' | 'invalid_stake',
+    public readonly code: BetErrorCode,
     message: string,
   ) {
     super(message);
@@ -35,6 +43,7 @@ export interface PlaceBetInput {
   selection: 'home' | 'draw' | 'away';
   stakeMinor: number;
   oddsAtPlacement: number;
+  overrideDailyLimit?: boolean;
 }
 
 interface AppState {
@@ -45,12 +54,14 @@ interface AppState {
   lastFetchedAt: number | null;
   language: Language;
   mockFailuresEnabled: boolean;
+  dailyLimitHtgn: number;
   recentlyPlacedAt: number | null;
   hydrated: boolean;
 
   hydrate: () => Promise<void>;
   setLanguage: (lang: Language) => Promise<void>;
   setMockFailuresEnabled: (enabled: boolean) => Promise<void>;
+  setDailyLimit: (htgn: number) => Promise<void>;
   refreshAll: () => Promise<void>;
   placeBet: (input: PlaceBetInput) => Promise<Bet>;
   clearRecentlyPlaced: () => void;
@@ -75,6 +86,30 @@ async function loadMockFailuresFromStorage(): Promise<boolean> {
   }
 }
 
+async function loadDailyLimitFromStorage(): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(DAILY_LIMIT_STORAGE_KEY);
+    if (!raw) return DEFAULT_DAILY_LIMIT_HTGN;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_DAILY_LIMIT_HTGN;
+  } catch {
+    return DEFAULT_DAILY_LIMIT_HTGN;
+  }
+}
+
+async function todayDebitStakesMinor(db: DB): Promise<number> {
+  const startOfTodaySec = Math.floor(startOfDay(new Date()).getTime() / 1000);
+  // debit_stake amounts are negative; negate the sum to get a positive
+  // "stakes placed today" total.
+  const rows = await db.query<{ total: number | null }>(
+    `SELECT COALESCE(SUM(-amount_htgn_minor), 0) AS total
+     FROM balance_ledger
+     WHERE kind = 'debit_stake' AND created_at >= ?`,
+    [startOfTodaySec],
+  );
+  return rows[0]?.total ?? 0;
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   balanceMinor: 0,
   matches: [],
@@ -83,16 +118,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   lastFetchedAt: null,
   language: 'ht',
   mockFailuresEnabled: false,
+  dailyLimitHtgn: DEFAULT_DAILY_LIMIT_HTGN,
   recentlyPlacedAt: null,
   hydrated: false,
 
   hydrate: async () => {
     const db = await getDb();
-    const [balance, bets, matches, mockFailures] = await Promise.all([
+    const [balance, bets, matches, mockFailures, dailyLimit] = await Promise.all([
       getBalance(db),
       listBets(db),
       listAllMatches(db),
       loadMockFailuresFromStorage(),
+      loadDailyLimitFromStorage(),
     ]);
     setMockFailuresRuntime(mockFailures);
     set({
@@ -102,6 +139,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       lastFetchedAt: deriveLastFetched(matches),
       language: currentLanguage(),
       mockFailuresEnabled: mockFailures,
+      dailyLimitHtgn: dailyLimit,
       hydrated: true,
     });
   },
@@ -122,6 +160,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Non-fatal: toggle still applies for the session.
     }
     set({ mockFailuresEnabled: enabled });
+  },
+
+  setDailyLimit: async (htgn) => {
+    if (!Number.isFinite(htgn) || htgn <= 0) return;
+    const rounded = Math.round(htgn);
+    try {
+      await AsyncStorage.setItem(DAILY_LIMIT_STORAGE_KEY, String(rounded));
+    } catch {
+      // Non-fatal: limit still applies for this session.
+    }
+    set({ dailyLimitHtgn: rounded });
   },
 
   refreshAll: async () => {
@@ -148,14 +197,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         `stake must be a positive integer minor unit, got ${input.stakeMinor}`,
       );
     }
-    const { balanceMinor } = get();
+    const { balanceMinor, dailyLimitHtgn } = get();
     if (input.stakeMinor > balanceMinor) {
       throw new BetError('insufficient_balance', 'stake exceeds balance');
+    }
+    const db = await getDb();
+    if (input.overrideDailyLimit !== true) {
+      const dailyLimitMinor = dailyLimitHtgn * 100;
+      const todayMinor = await todayDebitStakesMinor(db);
+      if (todayMinor + input.stakeMinor > dailyLimitMinor) {
+        throw new BetError(
+          'daily_limit_exceeded',
+          `placing this bet would bring today's stakes to ${todayMinor + input.stakeMinor} minor units, above the daily limit of ${dailyLimitMinor}`,
+        );
+      }
     }
     const payoutMinor = calculatePayout(input.stakeMinor, input.oddsAtPlacement);
     const clientBetId = uuid();
     const placedAt = now();
-    const db = await getDb();
 
     // Atomic: insert bet row + debit ledger entry. Either both succeed or
     // both roll back — CLAUDE.md §4.2.

@@ -28,6 +28,16 @@
   "history.empty": "Vous n'avez encore placé aucun pari",
   "offline.banner": "Hors ligne — {{count}} paris en attente",
   "bet.genericError": "Un problème est survenu. Réessayez.",
+  "bet.dailyLimitWarning": "Vous dépassez la limite quotidienne. Continuer quand même ?",
   "common.yes": "Oui",
-  "common.no": "Non"
+  "common.no": "Non",
+  "common.dismiss": "Fermer",
+  "settings.viewLedger": "Voir le registre",
+  "settings.takeBreak": "Prenez une pause si vous en avez besoin.",
+  "ledger.header": "Solde actuel",
+  "ledger.empty": "Aucun mouvement",
+  "ledger.kinds.initial_grant": "Don initial",
+  "ledger.kinds.debit_stake": "Mise",
+  "ledger.kinds.credit_winnings": "Gain",
+  "ledger.kinds.refund_void": "Remboursement"
 }

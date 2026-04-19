@@ -94,8 +94,8 @@ export default function MatchDetailScreen() {
     oddsForSelection !== null &&
     oddsForSelection > 1;
 
-  const submit = async (): Promise<void> => {
-    if (!canConfirm || oddsForSelection === null) return;
+  const submit = async (overrideDailyLimit: boolean = false): Promise<void> => {
+    if (!canConfirm || oddsForSelection === null || !match) return;
     setSubmitting(true);
     try {
       await placeBet({
@@ -103,11 +103,17 @@ export default function MatchDetailScreen() {
         selection,
         stakeMinor,
         oddsAtPlacement: oddsForSelection,
+        overrideDailyLimit,
       });
       router.back();
     } catch (err) {
       if (err instanceof BetError && err.code === 'insufficient_balance') {
         Alert.alert(t('bet.insufficientBalance'));
+      } else if (err instanceof BetError && err.code === 'daily_limit_exceeded') {
+        Alert.alert(t('bet.dailyLimitWarning'), undefined, [
+          { text: t('common.no'), style: 'cancel' },
+          { text: t('common.yes'), onPress: () => void submit(true) },
+        ]);
       } else {
         Alert.alert(t('bet.genericError'));
       }
@@ -125,11 +131,11 @@ export default function MatchDetailScreen() {
     if (stakeMinor > Math.floor(balanceMinor / 4)) {
       Alert.alert(t('bet.bigBetWarning'), undefined, [
         { text: t('common.no'), style: 'cancel' },
-        { text: t('common.yes'), onPress: () => void submit() },
+        { text: t('common.yes'), onPress: () => void submit(false) },
       ]);
       return;
     }
-    void submit();
+    void submit(false);
   };
 
   return (

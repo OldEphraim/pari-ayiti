@@ -1,13 +1,14 @@
 import { Link } from 'expo-router';
-import { Alert, ScrollView, Switch, View } from 'react-native';
-import { useState } from 'react';
+import { Alert, ScrollView, Switch, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../src/ui/components/Button';
 import { Card } from '../../src/ui/components/Card';
 import { Screen } from '../../src/ui/components/Screen';
 import { Text } from '../../src/ui/components/Text';
-import { spacing } from '../../src/ui/theme';
-import { getDb } from '../../src/db/client';
+import { colors, radius, spacing } from '../../src/ui/theme';
+import { applyMigrations, getDb } from '../../src/db/client';
 import {
   applyLedgerEntry,
   getBalance,
@@ -22,6 +23,7 @@ import { formatDate, now as nowSeconds } from '../../src/utils/time';
 import { currentLanguage, Language, setLanguage } from '../../src/i18n';
 import {
   getMatchesSnapshot,
+  loadInitialMatches,
   refreshMatches,
 } from '../../src/services/matchFetcher';
 import { useAppStore } from '../../src/state/useAppStore';
@@ -30,13 +32,79 @@ export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const [runningSmoke, setRunningSmoke] = useState(false);
   const [runningRefresh, setRunningRefresh] = useState(false);
+  const [runningReset, setRunningReset] = useState(false);
   const active = (i18n.language as Language) ?? currentLanguage();
   const mockFailuresEnabled = useAppStore((s) => s.mockFailuresEnabled);
   const setMockFailuresEnabled = useAppStore((s) => s.setMockFailuresEnabled);
+  const dailyLimitHtgn = useAppStore((s) => s.dailyLimitHtgn);
+  const setDailyLimit = useAppStore((s) => s.setDailyLimit);
+  const hydrate = useAppStore((s) => s.hydrate);
+
+  const [limitDraft, setLimitDraft] = useState<string>(String(dailyLimitHtgn));
+  useEffect(() => {
+    setLimitDraft(String(dailyLimitHtgn));
+  }, [dailyLimitHtgn]);
+
+  const commitDailyLimit = async (): Promise<void> => {
+    const n = parseInt(limitDraft, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      setLimitDraft(String(dailyLimitHtgn));
+      return;
+    }
+    await setDailyLimit(n);
+  };
 
   const pickLanguage = async (lang: Language): Promise<void> => {
     if (lang === active) return;
     await setLanguage(lang);
+  };
+
+  const runResetDatabase = (): void => {
+    Alert.alert(
+      'DEV: Reset database',
+      'DEV: this wipes matches, bets, balance, and ledger. Language preference is preserved.',
+      [
+        { text: t('common.no'), style: 'cancel' },
+        {
+          text: t('common.yes'),
+          onPress: () => void performReset(),
+        },
+      ],
+    );
+  };
+
+  const performReset = async (): Promise<void> => {
+    setRunningReset(true);
+    try {
+      const db = await getDb();
+      // Drop order respects the foreign-key graph
+      // (balance_ledger → bets → matches; balance and meta are standalone).
+      for (const table of [
+        'balance_ledger',
+        'bets',
+        'matches',
+        'balance',
+        'meta',
+      ]) {
+        await db.run(`DROP TABLE IF EXISTS ${table}`);
+      }
+      await applyMigrations(db);
+      await loadInitialMatches(db);
+      await AsyncStorage.multiRemove([
+        'pari-ayiti.mock-failures',
+        'pari-ayiti.daily-limit-htgn',
+      ]);
+      await hydrate();
+      Alert.alert(
+        'DEV: Reset database',
+        `DEV: done. Balance = ${formatHTGN(500_000, active)}`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert('DEV: Reset FAILED', message);
+    } finally {
+      setRunningReset(false);
+    }
   };
 
   const runSmokeTest = async (): Promise<void> => {
@@ -171,6 +239,54 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
+        <Card>
+          <View style={{ gap: spacing.sm }}>
+            <Text variant="h2">{t('settings.dailyLimit')}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <TextInput
+                value={limitDraft}
+                onChangeText={setLimitDraft}
+                onBlur={() => void commitDailyLimit()}
+                keyboardType="number-pad"
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.sm,
+                  fontSize: 16,
+                  color: colors.text,
+                  backgroundColor: colors.surface,
+                }}
+                accessibilityLabel={t('settings.dailyLimit')}
+              />
+              <Text variant="body" muted>
+                HTGN
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        <Card>
+          <View style={{ gap: spacing.xs }}>
+            <Link href="/ledger" accessibilityRole="link">
+              <Text variant="body">{t('settings.viewLedger')}</Text>
+            </Link>
+          </View>
+        </Card>
+
+        <Card>
+          <View style={{ gap: spacing.xs }}>
+            <Text variant="small" muted>
+              {t('settings.responsibleNote')}
+            </Text>
+            <Text variant="small" muted>
+              {t('settings.takeBreak')}
+            </Text>
+          </View>
+        </Card>
+
         {__DEV__ && (
           <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
             <Card>
@@ -256,6 +372,26 @@ export default function SettingsScreen() {
                     accessibilityLabel="DEV: Simulate flaky network"
                   />
                 </View>
+              </View>
+            </Card>
+
+            <Card>
+              <View style={{ gap: spacing.sm }}>
+                <Text variant="body">DEV: Reset database</Text>
+                <Text variant="small" muted>
+                  DEV: drops all tables, re-runs migrations (balance back to
+                  G 5 000,00 + initial_grant ledger), re-seeds the fixture,
+                  clears mock-failures and daily-limit keys. Preserves
+                  language preference. Used to prep a clean demo state.
+                </Text>
+                <Button
+                  label={
+                    runningReset ? 'DEV: resetting…' : 'DEV: Reset database'
+                  }
+                  variant="secondary"
+                  loading={runningReset}
+                  onPress={runResetDatabase}
+                />
               </View>
             </Card>
           </View>

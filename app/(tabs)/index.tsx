@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Banner } from '../../src/ui/components/Banner';
 import { Card } from '../../src/ui/components/Card';
 import { Screen } from '../../src/ui/components/Screen';
 import { Text } from '../../src/ui/components/Text';
-import { colors, radius, spacing } from '../../src/ui/theme';
+import { colors, motion, radius, spacing } from '../../src/ui/theme';
 import { useAppStore } from '../../src/state/useAppStore';
 import { Match } from '../../src/db/matches';
 import { formatHTGN } from '../../src/utils/money';
@@ -17,6 +25,7 @@ const BET_PLACED_BANNER_MS = 3000;
 export default function MatchesScreen() {
   const { t } = useTranslation();
   const matches = useAppStore((s) => s.matches);
+  const bets = useAppStore((s) => s.bets);
   const balanceMinor = useAppStore((s) => s.balanceMinor);
   const language = useAppStore((s) => s.language);
   const isOnline = useAppStore((s) => s.isOnline);
@@ -34,6 +43,21 @@ export default function MatchesScreen() {
         .sort((a, b) => a.commence_time - b.commence_time),
     [matches],
   );
+
+  const pendingSyncCount = useMemo(
+    () => bets.filter((b) => b.status === 'PENDING_SYNC').length,
+    [bets],
+  );
+
+  const offlineAnim = useRef(new Animated.Value(isOnline ? 0 : 1)).current;
+  useEffect(() => {
+    Animated.timing(offlineAnim, {
+      toValue: isOnline ? 0 : 1,
+      duration: motion.maxMs,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+  }, [isOnline, offlineAnim]);
 
   useEffect(() => {
     if (recentlyPlacedAt === null) return;
@@ -74,19 +98,29 @@ export default function MatchesScreen() {
           tone="info"
           message={t('bet.placed')}
           onDismiss={clearRecentlyPlaced}
+          dismissLabel={t('common.dismiss')}
         />
       )}
 
-      {!isOnline && (
+      <Animated.View
+        style={{
+          opacity: offlineAnim,
+          transform: [
+            {
+              translateY: offlineAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-16, 0],
+              }),
+            },
+          ],
+        }}
+        pointerEvents={isOnline ? 'none' : 'auto'}
+      >
         <Banner
           tone="offline"
-          message={t('matches.offline', {
-            time: lastFetchedAt
-              ? formatDate(lastFetchedAt, language)
-              : '—',
-          })}
+          message={t('offline.banner', { count: pendingSyncCount })}
         />
-      )}
+      </Animated.View>
 
       <FlatList
         data={upcoming}

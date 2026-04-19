@@ -7,10 +7,17 @@ export interface BannerProps {
   message: string;
   tone?: 'info' | 'warn' | 'offline';
   onDismiss?: () => void;
+  dismissLabel?: string;
   right?: ReactNode;
 }
 
-export function Banner({ message, tone = 'info', onDismiss, right }: BannerProps) {
+export function Banner({
+  message,
+  tone = 'info',
+  onDismiss,
+  dismissLabel,
+  right,
+}: BannerProps) {
   return (
     <View style={[styles.banner, toneStyles[tone]]}>
       <Text variant="small" style={styles.message}>
@@ -22,7 +29,7 @@ export function Banner({ message, tone = 'info', onDismiss, right }: BannerProps
           <Pressable
             onPress={onDismiss}
             accessibilityRole="button"
-            accessibilityLabel="Dismiss"
+            accessibilityLabel={dismissLabel ?? 'Dismiss'}
             hitSlop={8}
             style={styles.dismiss}
           >

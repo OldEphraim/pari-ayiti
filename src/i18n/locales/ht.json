@@ -28,6 +28,16 @@
   "history.empty": "Ou poko mete okenn pari",
   "offline.banner": "San entènèt — {{count}} pari k ap tann",
   "bet.genericError": "Gen yon pwoblèm. Eseye ankò.",
+  "bet.dailyLimitWarning": "Ou depase limit chak jou an. Ou vle kontinye kanmenm?",
   "common.yes": "Wi",
-  "common.no": "Non"
+  "common.no": "Non",
+  "common.dismiss": "Fèmen",
+  "settings.viewLedger": "Wè ledger balans lan",
+  "settings.takeBreak": "Pran yon poz si w bezwen.",
+  "ledger.header": "Balans aktyèl",
+  "ledger.empty": "Pa gen okenn mouvman",
+  "ledger.kinds.initial_grant": "Kado inisyal",
+  "ledger.kinds.debit_stake": "Mize",
+  "ledger.kinds.credit_winnings": "Jwenn",
+  "ledger.kinds.refund_void": "Ranbousman"
 }

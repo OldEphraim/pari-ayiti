@@ -69,3 +69,12 @@ Odds mapping follows STEPS.md §5.2: Brazil heavy favorite (1.15 / 8.0 / 17.0 Ha
 **Decision:** `fetchWorldCupOdds()` collapses bookmakers by picking the **highest** decimal price per outcome (best-for-user). For each match, we scan every bookmaker's h2h market, find the max of each of (home / draw / away) independently, and emit a single `NormalizedMatch`.
 **Why:** The user-facing framing is "here's the best odds you can get on this match." Even if Nclusion ships this for real, the HTGN-denominated wagers aren't actually placed against these bookmakers (Phase 7's mock backend or Phase 11's Solana program holds the escrow); the odds are just the number the user saw at placement, snapshotted into `bets.odds_at_placement`. Showing the best available rate is both user-friendly and honest about the demo's "this is what the market looked like" positioning.
 **Tradeoff:** A "first bookmaker" strategy would be simpler but exposes arbitrary bookmaker bias. An "average" strategy would be more representative but harder to explain to a user ("why is your odds 1.47 when bookmaker X lists 1.50?"). Highest-price is the cleanest pitch.
+
+---
+
+## D-008 — "Data used today" counter deferred
+
+**Context:** STEPS.md §9.3 and CLAUDE.md §5 both call for a small "Done w itilize jodi a" counter on the Settings screen as a signal that the app respects Haiti's ~50 MB/day data constraint.
+**Decision:** Deferred — not shipping in the Nclusion submission.
+**Why:** Implementing the counter properly requires wrapping every `fetch` call with byte-accounting and persisting the running total in AsyncStorage with daily rollover. Nothing in the current code is instrumented for this, so retrofitting it hits three files (odds.ts, matchFetcher.ts, mockBackend.ts) for a marginal Loom-demo beat. The responsible-gambling surface (daily limit, ledger auditability) covers the stronger dignity signal.
+**Tradeoff:** Lose one small "we respect the 50 MB/day budget" talking point in the Loom. Still covered verbally via the fixture-primary, cache-first fetch strategy (D-005 / STEPS.md §5). If we ship to real users, a single shared `fetchJson` wrapper + `Content-Length` accumulation is ~15 minutes of work — trivially recoverable later.

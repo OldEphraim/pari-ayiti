@@ -32,6 +32,22 @@ export async function listLedger(db: DB): Promise<LedgerEntry[]> {
   );
 }
 
+export interface LedgerRow extends LedgerEntry {
+  match_home_team: string | null;
+  match_away_team: string | null;
+}
+
+export async function listLedgerEntries(db: DB): Promise<LedgerRow[]> {
+  return db.query<LedgerRow>(
+    `SELECT bl.id, bl.kind, bl.amount_htgn_minor, bl.related_bet_id, bl.created_at,
+            m.home_team AS match_home_team, m.away_team AS match_away_team
+     FROM balance_ledger bl
+     LEFT JOIN bets b ON b.client_bet_id = bl.related_bet_id
+     LEFT JOIN matches m ON m.id = b.match_id
+     ORDER BY bl.id DESC`,
+  );
+}
+
 export async function applyLedgerEntry(
   db: DB,
   kind: LedgerKind,
