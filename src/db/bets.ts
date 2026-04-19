@@ -35,13 +35,17 @@ export interface CreateBetInput {
 }
 
 export async function createBet(db: DB, input: CreateBetInput): Promise<void> {
+  // No ON CONFLICT clause — duplicate client_bet_id is a programming bug
+  // (uuid v4 doesn't collide by accident) and the PRIMARY KEY violation
+  // should surface to the caller rather than silently no-op. Callers that
+  // legitimately need at-least-once semantics live in workers that check
+  // state before re-inserting.
   await db.run(
     `INSERT INTO bets (
        client_bet_id, match_id, selection, stake_htgn,
        odds_at_placement, potential_payout_htgn, status,
        sync_attempts, placed_at
-     ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING_SYNC', 0, ?)
-     ON CONFLICT(client_bet_id) DO NOTHING`,
+     ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING_SYNC', 0, ?)`,
     [
       input.client_bet_id,
       input.match_id,

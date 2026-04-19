@@ -1,4 +1,4 @@
-import { getDb } from '../db/client';
+import { DB, getDb } from '../db/client';
 import { applyLedgerEntry } from '../db/balance';
 import {
   Bet,
@@ -27,7 +27,8 @@ function winningSelection(match: Match): BetSelection | null {
   return 'away';
 }
 
-export async function settleDueBets(): Promise<SettlementSummary> {
+// `dbArg` is a test seam; production callers omit it.
+export async function settleDueBets(dbArg?: DB): Promise<SettlementSummary> {
   if (settling) {
     return {
       skipped: true,
@@ -47,7 +48,7 @@ export async function settleDueBets(): Promise<SettlementSummary> {
   };
   const provider = getSettlementProvider();
   try {
-    const db = await getDb();
+    const db = dbArg ?? (await getDb());
     const pending = await listBets(db, { status: 'PENDING_SETTLEMENT' });
     for (const bet of pending) {
       summary.processed += 1;
@@ -66,7 +67,7 @@ export async function settleDueBets(): Promise<SettlementSummary> {
         }
         const outcome: 'won' | 'lost' = bet.selection === winner ? 'won' : 'lost';
         await provider.settle(bet, outcome);
-        await applySettlement(bet, outcome);
+        await applySettlement(bet, outcome, db);
         if (outcome === 'won') summary.won += 1;
         else summary.lost += 1;
       } catch (err) {
@@ -83,8 +84,8 @@ export async function settleDueBets(): Promise<SettlementSummary> {
 async function applySettlement(
   bet: Bet,
   outcome: 'won' | 'lost',
+  db: DB,
 ): Promise<void> {
-  const db = await getDb();
   const settledAt = now();
   if (outcome === 'lost') {
     // No ledger entry — stake was already debited at placement.

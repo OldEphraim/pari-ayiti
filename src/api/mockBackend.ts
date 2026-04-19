@@ -38,8 +38,24 @@ function randomLatencyMs(): number {
   );
 }
 
+// Test-only seam. `confirm` completely replaces the confirmBet decision
+// logic (bypasses both the idempotency map and the flaky-mode coin flip).
+// `delayMs` overrides the simulated network latency so tests don't wait
+// 50-300ms per call. Production code never sets these.
+export interface MockBackendTestHooks {
+  confirm?: (bet: Bet) => Promise<ConfirmResult>;
+  delayMs?: number;
+}
+
+let testHooks: MockBackendTestHooks = {};
+
+export function __setTestHooks(hooks: MockBackendTestHooks): void {
+  testHooks = hooks;
+}
+
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  const effective = testHooks.delayMs ?? ms;
+  return new Promise((resolve) => setTimeout(resolve, effective));
 }
 
 // Idempotency store keyed by client_bet_id. Stores the ConfirmSuccess we
@@ -49,6 +65,10 @@ const seen = new Map<string, ConfirmSuccess>();
 
 export async function confirmBet(bet: Bet): Promise<ConfirmResult> {
   await delay(randomLatencyMs());
+
+  if (testHooks.confirm) {
+    return testHooks.confirm(bet);
+  }
 
   const existing = seen.get(bet.client_bet_id);
   if (existing) return existing;
@@ -73,8 +93,10 @@ export async function fetchBetStatus(
   return seen.get(client_bet_id) ?? null;
 }
 
-// Test-only: wipe the idempotency map between specs.
+// Test-only: wipe the idempotency map, runtime flag, and test hooks
+// between specs.
 export function __resetMockBackend(): void {
   seen.clear();
   runtimeFailuresEnabled = false;
+  testHooks = {};
 }

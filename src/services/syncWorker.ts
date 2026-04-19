@@ -1,4 +1,4 @@
-import { getDb } from '../db/client';
+import { DB, getDb } from '../db/client';
 import {
   Bet,
   getPendingSync,
@@ -21,7 +21,10 @@ export interface DrainSummary {
 
 let draining = false;
 
-export async function drain(): Promise<DrainSummary> {
+// `dbArg` is a test seam — production callers omit it and the worker
+// uses the module-level getDb() singleton. Tests pass an in-memory
+// BetterSqliteDB.
+export async function drain(dbArg?: DB): Promise<DrainSummary> {
   if (draining) {
     return { skipped: true, processed: 0, confirmed: 0, failed: 0, voided: 0 };
   }
@@ -34,7 +37,7 @@ export async function drain(): Promise<DrainSummary> {
     voided: 0,
   };
   try {
-    const db = await getDb();
+    const db = dbArg ?? (await getDb());
     const pending = await getPendingSync(db);
     for (const bet of pending) {
       summary.processed += 1;
@@ -46,11 +49,11 @@ export async function drain(): Promise<DrainSummary> {
           });
           summary.confirmed += 1;
         } else {
-          await handleFailure(bet, summary);
+          await handleFailure(bet, summary, db);
         }
       } catch (err) {
         console.warn('[sync] confirmBet threw:', err);
-        await handleFailure(bet, summary);
+        await handleFailure(bet, summary, db);
       }
     }
   } finally {
@@ -59,8 +62,11 @@ export async function drain(): Promise<DrainSummary> {
   return summary;
 }
 
-async function handleFailure(bet: Bet, summary: DrainSummary): Promise<void> {
-  const db = await getDb();
+async function handleFailure(
+  bet: Bet,
+  summary: DrainSummary,
+  db: DB,
+): Promise<void> {
   const attempts = await incrementSyncAttempts(db, bet.client_bet_id);
   if (attempts >= MAX_SYNC_ATTEMPTS) {
     // Transition to VOID_REFUNDED and restore the stake atomically. Both
