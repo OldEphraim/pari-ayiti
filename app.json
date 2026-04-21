@@ -17,6 +17,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.oldephraim.pariayiti",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -30,6 +31,16 @@
     "plugins": [
       "expo-sqlite",
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "oddsApiKey": {},
+      "settlementProvider": "mock",
+      "enableMockFailures": false,
+      "router": {},
+      "eas": {
+        "projectId": "dd76536e-f636-4bda-a9af-e414435aac69"
+      }
+    },
+    "owner": "oldephraim"
   }
 }

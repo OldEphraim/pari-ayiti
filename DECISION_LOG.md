@@ -78,3 +78,84 @@ Odds mapping follows STEPS.md §5.2: Brazil heavy favorite (1.15 / 8.0 / 17.0 Ha
 **Decision:** Deferred — not shipping in the Nclusion submission.
 **Why:** Implementing the counter properly requires wrapping every `fetch` call with byte-accounting and persisting the running total in AsyncStorage with daily rollover. Nothing in the current code is instrumented for this, so retrofitting it hits three files (odds.ts, matchFetcher.ts, mockBackend.ts) for a marginal Loom-demo beat. The responsible-gambling surface (daily limit, ledger auditability) covers the stronger dignity signal.
 **Tradeoff:** Lose one small "we respect the 50 MB/day budget" talking point in the Loom. Still covered verbally via the fixture-primary, cache-first fetch strategy (D-005 / STEPS.md §5). If we ship to real users, a single shared `fetchJson` wrapper + `Content-Length` accumulation is ~15 minutes of work — trivially recoverable later.
+
+---
+
+## D-009 — Zustand over Redux for app state
+
+**Context:** CLAUDE.md §3 specifies Zustand. Historical norm in Nclusion-scale mobile apps is Redux + Redux-Toolkit; picking Zustand deviates from that.
+**Decision:** Zustand for all shared React state. No Redux, no Jotai, no Recoil.
+**Why:** Zero boilerplate (no action creators / reducers / slice files / providers), tiny bundle (~1 kB gzipped vs. Redux's ~14 kB with RTK), and the store is a plain function — trivially callable from non-React code paths (workers, boot gate in `_layout.tsx`). The mental model also lines up with Nclusion's "keep it light for 2G" framing.
+**Tradeoff:** Redux's time-travel devtools and structured middleware are real niceties we give up. For a weekend build with one user and one device, the middleware story is overkill; if we scaled to multiple orgs or needed offline action replay, we'd reconsider.
+
+---
+
+## D-010 — SQLite over MMKV, fronted by a DB interface
+
+**Context:** CLAUDE.md §3 pins `expo-sqlite` for structured data. Two design questions: why not MMKV (faster, simpler KV), and how to make the DB testable from Node without bundling an emulator.
+**Decision:** SQLite for bets / matches / balance / ledger. Zustand and AsyncStorage only for tiny KV state (language preference, daily limit, mock-failures toggle). A `DB` interface in `src/db/client.ts` abstracts `ExpoSqliteDB` (production) from `BetterSqliteDB` (Phase 8 tests, in-memory). All DAOs depend on the interface.
+**Why:** Bets and ledger are relational — FKs, joins (ledger × bets × matches on the ledger screen), transactional writes (bet + debit atomically per D-011). Those are cheap in SQL and annoying in a KV store. The DB interface lets us instantiate `better-sqlite3` in Jest and exercise real transactional behavior — the four Phase 8 test files talk to SQL, not mocks.
+**Tradeoff:** SQLite adds a native module surface (Metro had to be taught `better-sqlite3` is test-only via a separate file), and the abstraction layer is more code than a direct `expo-sqlite` call. For a codebase that will realistically see Phase 11 (Solana), Phase 12 (polish), and potentially a real backend integration, the testable seam pays itself back.
+
+---
+
+## D-011 — Debit-at-placement, no projection layer
+
+**Context:** A naive design would debit the user's balance only on settlement, which requires a projection layer that reserves stake against PENDING_SYNC + PENDING_SETTLEMENT bets to prevent over-subscription. That projection is the kind of thing that gets subtly wrong in an offline-queue world.
+**Decision:** Debit the stake **in the same SQLite transaction as the bet insert**. `balance.htgn_minor` decreases atomically. No projection layer. On VOID_REFUNDED (5-fail sync) or never (settlement handles credits on win separately), the same-transaction pattern restores the stake via a `refund_void` ledger entry.
+**Why:** Each bet validates against an already-reduced `balance.htgn_minor`, so double-spending is **structurally impossible** — the DB invariant prevents it, not a consistency check in app code. The ledger invariant `balance.htgn_minor == SUM(balance_ledger.amount_htgn_minor)` is enforced by `reconcileBalance()` on every dev boot and documented as a test-able property in Phase 8.
+**Tradeoff:** Settlement math needs a tiny bit of extra care — on `SETTLED_WON`, we credit the full `potential_payout_htgn` (stake + profit), not just the profit, because the stake was already debited. Worked through in `settlementWorker.applySettlement` and covered by the Phase 8 settlement tests.
+
+---
+
+## D-012 — Integer minor units everywhere for money
+
+**Context:** IEEE 754 floats silently lose precision (`0.1 + 0.2 === 0.30000000000000004`). Production fintech code that does arithmetic on money in floats eventually drifts, and the drift is visible to users as off-by-one-centime balance errors.
+**Decision:** All money is integer minor units (1 HTGN = 100 minor) from the schema up to the UI boundary. Conversion to/from floats happens **only** at `formatHTGN` / `toMinor` / `fromMinor` in `src/utils/money.ts`. SQLite columns are `INTEGER`. Zustand fields are `number` but always integers. `toMinor` uses half-even rounding (D-004).
+**Why:** Every modern fintech style guide says this. Stripe stores amounts as integer cents. Same pattern.
+**Tradeoff:** UI developers can't just `stake * odds` in a render — they have to route through `calculatePayout(stakeMinor, odds)`. A small discipline cost for a large correctness win. Phase 8's 1000-iteration round-trip test (`money.test.ts`) pins the rule.
+
+---
+
+## D-013 — Mock backend fails retryably only; no REJECTED state
+
+**Context:** A real bet-submission backend has two failure modes: transient (network, overloaded server — worth retrying) and permanent (invalid odds, account limit exceeded — should be rejected outright). A proper state machine would include `REJECTED → VOID_REFUNDED` as a terminal rejection path.
+**Decision:** The mock backend (`mockBackend.confirmBet`) only produces transient failures (`{ok: false, reason: 'simulated network error'}`). Sync worker treats every failure as retryable; after 5 attempts, the bet transitions to `VOID_REFUNDED` with a matching `refund_void` ledger entry. No `REJECTED` state in the schema.
+**Why:** Scope — demonstrating the offline-queue + retry + void-refund cycle is the interesting Brief 1 behavior. A rejection path would add a fifth state + a rejection reason column + UI copy for each reason without exercising new architecture.
+**Tradeoff:** When Nclusion's real backend lands, someone has to add `REJECTED` as a bet status, extend the state machine in `bets.ts`, and update the sync worker to branch on the reason code. Small change, clearly bounded — noted here so the next person doesn't have to rediscover it.
+
+---
+
+## D-014 — Haitian Creole primary; English only in DEV-prefixed strings
+
+**Context:** CLAUDE.md §8 is strict: no English in user-facing UI. But devs need scrutable labels for component galleries, reset buttons, and smoke tests without having to translate every DEV artifact.
+**Decision:** All production UI copy goes through `react-i18next` with `ht.json` as default and `fr.json` as fallback. Any string prefixed `DEV:` is English-only and stays inline (not in i18n files). Grep-friendly: `grep "DEV:" app/ src/` finds every dev-only string.
+**Why:** Clear authorial intent — Creole-first honors Nclusion's "start with humility" posture (CLAUDE.md §1). The `DEV:` carve-out keeps reviewers unconfused about which controls are dev-only without cluttering i18n.
+**Tradeoff:** Language endonyms in the toggle ("Kreyòl" / "Français") are treated as language-neutral literals, not i18n keys — a pattern borrowed from every mainstream language picker.
+
+---
+
+## D-015 — French pluralization deferred; demo uses always-plural form
+
+**Context:** French grammatical plural requires inflection: `1 pari en attente` vs. `3 paris en attente` (note "paris"). `i18next` supports this via `_one` / `_other` suffixed keys and ICU format. Creole has no morphological plural, so `{{count}} pari k ap tann` is grammatical for any count.
+**Decision:** Shipped the always-plural French form (`{{count}} paris en attente`). Proper `_one` / `_other` keys deferred.
+**Why:** The offline banner is the only string with a count interpolation, and shipping "1 paris" for one bet is visually acceptable in a demo. Setting up the plural keys for one string isn't worth the plumbing.
+**Tradeoff:** Pre-launch review pass should fix this when the native-speaker Creole / French copy audit happens (D-003 notes the same review is already owed).
+
+---
+
+## D-016 — Sòl / group-bet feature de-scoped to FUTURE_WORK.md
+
+**Context:** CLAUDE.md §1 flags Nclusion's community-traditions UX layer as a core product pillar. A sòl-inspired group-bet feature (multiple users pool stakes on a shared bet, winnings distributed proportionally) would be the strongest cultural-alignment signal in this submission.
+**Decision:** Cut. Design sketch lives in [FUTURE_WORK.md](./FUTURE_WORK.md).
+**Why:** Implementing it right requires a multi-user sync story (at least a shared group identifier + contribution tracking), a share-link / QR flow, and proportional settlement math. Any two of those three is achievable in a weekend; all three plus existing scope isn't, and a half-built group-bet would undersell the cultural point.
+**Tradeoff:** Lose the strongest "we get Haitian community finance" demo beat. Compensate by calling it out explicitly in the Loom script / README and showing the ~150-word design sketch in FUTURE_WORK — signals that the thought was deliberate, not an omission.
+
+---
+
+## D-017 — Loom walkthrough video dropped in favor of `LOOM_SCRIPT.md` + demo GIF
+
+**Context:** CLAUDE.md §13 originally called for a Loom walkthrough. Nclusion's hiring briefs don't actually require one, and the reviewer audience (engineering leadership) generally prefers a concise written walkthrough + a short GIF for visual proof over a multi-minute talking-head video.
+**Decision:** Commit `LOOM_SCRIPT.md` at the repo root with the same 5-scene structure that the Loom would have had. A demo GIF will be captured during Phase 12 polish. No Loom recording.
+**Why:** Scripts are skimmable; videos aren't. A GIF costs nothing extra given the app already runs on the emulator. Anyone who genuinely prefers a video can read the script and watch the GIF side-by-side in 90 seconds.
+**Tradeoff:** Lose the "hear Alan's voice narrate the design thinking" dimension. Compensate via the DECISION_LOG and the CLAUDE.md / STEPS.md documents, all of which convey design thinking in text form.
