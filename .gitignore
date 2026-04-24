@@ -48,3 +48,6 @@ yarn-error.*
 # solana build artifacts
 /solana/htgn-betting/target/
 /solana/htgn-betting/.anchor/
+
+# release artifacts — APKs go to GitHub releases, not git
+*.apk

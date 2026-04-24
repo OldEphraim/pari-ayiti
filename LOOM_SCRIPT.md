@@ -1,6 +1,6 @@
 # LOOM_SCRIPT.md — Pari Ayiti walkthrough
 
-This document replaces a recorded Loom — see DECISION_LOG.md **D-017**. It's a 5-scene walkthrough of the app, structured the way a short video would be paced. A companion demo GIF will be attached in Phase 12. Readers who prefer a 90-second skim over a 4-minute video should find this sufficient.
+This document replaces a recorded Loom — see DECISION_LOG.md **D-017**. It's a 5-scene walkthrough of the app, structured the way a short video would be paced. Readers who prefer a 90-second skim over a 4-minute video should find this sufficient.
 
 **Setup before the walkthrough:** `DEV: Reset database` from Paramèt so the ledger contains only `initial_grant` and balance is `G 5 000,00`. Language defaults to Kreyòl.
 
@@ -69,7 +69,7 @@ Narrate while tapping:
 > - **Community-traditions UX.** Creole-first, no English visible, conservative humility-forward copy (`Ou pa gen ase HTGN pou pari sa a kounye a` rather than `Insufficient funds`). The sòl / group-bet feature in FUTURE_WORK.md is the natural next step on this axis.
 > - **Agency-banking distribution.** The offline queue + sync worker means an agent anywhere in Haiti can onboard a bettor whose phone has 2G for only a few minutes a day. The architecture is ready for it.
 >
-> Brief 2 (Solana HTGN settlement) lives on the same codebase behind a `SettlementProvider` env var. The placement UI never blocks on RPC; chain calls live only in the background worker layer. Happy to walk through that separately or now."
+> Brief 2 (Solana HTGN settlement) is deliberately deferred for this submission — see DECISION_LOG **D-018** for the scope call and FUTURE_WORK.md for the full architecture sketch (interface seam, Anchor instruction shape, and how the existing state machine maps onto on-chain settlement without changing the UI path). Happy to walk through that design in the interview."
 
 ---
 

@@ -159,3 +159,12 @@ Odds mapping follows STEPS.md §5.2: Brazil heavy favorite (1.15 / 8.0 / 17.0 Ha
 **Decision:** Commit `LOOM_SCRIPT.md` at the repo root with the same 5-scene structure that the Loom would have had. A demo GIF will be captured during Phase 12 polish. No Loom recording.
 **Why:** Scripts are skimmable; videos aren't. A GIF costs nothing extra given the app already runs on the emulator. Anyone who genuinely prefers a video can read the script and watch the GIF side-by-side in 90 seconds.
 **Tradeoff:** Lose the "hear Alan's voice narrate the design thinking" dimension. Compensate via the DECISION_LOG and the CLAUDE.md / STEPS.md documents, all of which convey design thinking in text form.
+
+---
+
+## D-018 — Brief 2 (Solana) deferred at submission
+
+**Context:** CLAUDE.md §0 frames the project as addressing both of Nclusion's hiring briefs on a single codebase: Brief 1 (offline-first mobile sports betting) and Brief 2 (Solana HTGN settlement). CLAUDE.md §14 explicitly contemplates the `v1-production-ready` tag as an acceptable submission if Brief 2 integration goes sideways: "Brief 1 is complete, Brief 2 is partially implemented. This is an acceptable outcome."
+**Decision:** Submit Brief 1 only at the `v1-production-ready` tag. Brief 2 is not scaffolded in this repo — there is no `SettlementProvider` interface split, no `MockSettlementProvider` / `SolanaSettlementProvider` classes, no `/solana/` directory, no `SETTLEMENT_PROVIDER` env var, no Anchor program. `settlementWorker.ts` talks directly to `mockBackend`. The Brief 2 architecture sketch is carried forward in FUTURE_WORK.md.
+**Why:** Time budget. The Monday capstone plus parallel Superbuilders / GFA commitments left no contiguous block for the Anchor program + TS client + devnet deployment that a credible Brief 2 requires. A half-built Brief 2 — an interface seam with a stub provider, no on-chain program — would undersell the two-brief framing more than a clean, dated deferral does. CLAUDE.md §2 is explicit: "ship two briefs' worth of core loop, beautifully. Do not sprawl." The Brief 1 submission meets the "beautifully" bar; a thin Brief 2 would not.
+**Tradeoff:** Lose the Solana demo beat entirely. Compensate by carrying the full architecture sketch in FUTURE_WORK.md — interface shape, Anchor instructions, state-machine mapping, non-blocking-UI invariant, and the remaining engineering list — so the interview conversation has a concrete place to land when Brief 2 comes up. This entry makes the scope decision explicit and dated rather than leaving it as an apparent omission.

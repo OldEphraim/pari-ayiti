@@ -4,6 +4,41 @@ Deferred items. Items here were cut deliberately — see DECISION_LOG.md for the
 
 ---
 
+## Headline feature: Brief 2 — Solana HTGN settlement
+
+**Status at submission.** Deferred (see DECISION_LOG D-018). Nothing in this repo is Solana-specific: there is no `SettlementProvider` interface, no `MockSettlementProvider` / `SolanaSettlementProvider` split, no `/solana/` directory, no `SETTLEMENT_PROVIDER` env var. Everything below is the forward design, not code that exists.
+
+**Interface seam.** `src/services/settlementWorker.ts` currently talks directly to `mockBackend`. The first move is to lift that into a `SettlementProvider` interface:
+
+```ts
+interface SettlementProvider {
+  confirmBet(bet: Bet): Promise<{ok: true; provider_ref: string; confirmed_at: number} | {ok: false; reason: string}>;
+  settleBet(bet: Bet, outcome: MatchOutcome): Promise<{ok: true; payout_minor: number; provider_ref: string} | {ok: false; reason: string}>;
+}
+```
+
+`MockSettlementProvider` wraps today's in-process mock. `SolanaSettlementProvider` wraps an Anchor client. A factory reads `SETTLEMENT_PROVIDER` from `.env` via `expo-constants` and picks one at boot. No other code changes.
+
+**Anchor program shape (`programs/htgn-betting/`).** One program, three instructions:
+
+- `place_bet(client_bet_id, match_id, selection, stake, odds_snapshot)` — transfers HTGN (mock SPL token) from the bettor's ATA to a per-bet escrow PDA seeded on `client_bet_id`. Emits `BetPlaced` event with the same idempotency key the client already uses.
+- `settle_bet(client_bet_id, outcome)` — oracle-signed (a single devnet authority keypair for v1; production would be a multisig). On win, transfers `floor(stake × odds_snapshot)` from escrow to bettor ATA. On loss, transfers to the house treasury ATA. Closes the escrow PDA.
+- `void_bet(client_bet_id)` — called after the 5-sync-fail threshold already defined in the client state machine. Returns escrow to bettor ATA, matching the `refund_void` ledger entry pattern (D-011).
+
+**Why the state machine doesn't change.** The current client state machine (`PENDING_SYNC → PENDING_SETTLEMENT → SETTLED_{WON,LOST} / VOID_REFUNDED`) maps one-to-one onto Anchor instructions. `onchain_tx_id` already exists as a nullable column on `bets` (CLAUDE.md §4.5); the Solana provider populates it on successful confirmation and settlement.
+
+**Non-blocking UI is preserved.** Per Brief 2's problem statement and CLAUDE.md §0, no blockchain call may appear in the render path or gate a user-visible UI transition. The existing worker layer already owns all mock-backend calls; swapping the provider behind it preserves that invariant for free.
+
+**Remaining engineering after the interface + program land.**
+- Keyring security: current design would store a dev wallet in a gitignored JSON; production needs Android Keystore / iOS Keychain with passphrase unlock.
+- RPC fallback hierarchy (Helius → QuickNode → public devnet) with exponential backoff.
+- User-visible "Wè sou chèn lan" link per bet once `onchain_tx_id` is populated, opening the tx in Solana Explorer.
+- Oracle authority: v1 plan was a single devnet keypair; a real deployment needs a multisig (Squads or custom) and a documented score-feed source.
+
+**Estimated scope.** The Anchor program + test + devnet deploy + TS client wiring is a credible 2-3 day block of focused work. It was cut to keep the Brief 1 submission clean under the weekend + Monday-capstone constraint (DECISION_LOG D-018).
+
+---
+
 ## Headline feature: sòl / group-bet
 
 **Cultural anchor.** The sòl (also spelled sol in contemporary Creole, and cognate to the West African esusu, Dominican san, and Kenyan chama) is a Haitian ROSCA — a rotating savings and credit association where community members pool contributions into a shared fund. Sòl is how a huge fraction of unbanked Haiti actually moves money. Nclusion's community-traditions UX pillar (CLAUDE.md §1) is built around exactly this pattern.
@@ -76,6 +111,3 @@ CREATE TABLE group_members (
 - **Sentry / Crashlytics.** Real error monitoring for production builds.
 - **Automated UI regression via Maestro or Detox.** CLAUDE.md §11 explicitly de-scopes E2E, but a five-test happy-path Maestro suite (place bet, settle, reset DB) would catch most regressions before they hit a reviewer.
 
-### Solana (Brief 2)
-- **SolanaSettlementProvider runtime.** Phase 11 delivers the interface and Anchor program; Phase 11.7 wires the TS client. Items still owed after that: RPC fallback hierarchy, retries with exponential backoff, and a user-visible "view on chain" link per bet once `onchain_tx_id` is populated.
-- **Keyring security.** Current design stores the dev wallet in a gitignored JSON; production needs a platform keystore (Android Keystore / iOS Keychain) and a passphrase-unlock flow.
